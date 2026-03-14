@@ -1,6 +1,13 @@
+from pathlib import Path
+import sys
+
+SRC_ROOT = Path(__file__).resolve().parents[1]
+if str(SRC_ROOT) not in sys.path:
+    sys.path.insert(0, str(SRC_ROOT))
+
 import numpy as np
-from activations import Activation
-from loss import Loss
+from model.activations import Activation
+from model.loss import Loss
 
 class Linear:
     def __init__(self, in_features: int, out_features: int):
@@ -11,10 +18,12 @@ class Linear:
         self.db = None
     
     def forward(self, x):
+        x = np.asarray(x, dtype=np.float64)
         self.cache = x
         return x @ self.w + self.b
     
     def backward(self, dout: np.ndarray) -> np.ndarray:
+        dout = np.asarray(dout, dtype=np.float64)
         self.dw = self.cache.T @ dout
         self.db = dout.sum(axis=0)
         return dout @ self.w.T
@@ -57,11 +66,11 @@ class LossLayer:
         self.loss = Loss()
     
     def forward(self, y_pred: np.ndarray, y_true: np.ndarray) -> float:
-        fn = getattr(self.loss, self.name)
+        fn = getattr(self.loss, self.loss_map[self.loss_name])
         return float(fn(y_true, y_pred))
     
     def backward(self, y_pred: np.ndarray, y_true: np.ndarray) -> np.ndarray:
-        deriv_fn = getattr(self.loss, f"{self.name}_derivative")
+        deriv_fn = getattr(self.loss, f"{self.loss_map[self.loss_name]}_derivative")
         return deriv_fn(y_true, y_pred)
     
 class FFNN:
@@ -84,7 +93,7 @@ class FFNN:
             self.layers.append(Linear(dims[i], dims[i + 1]))
             self.layers.append(ActivationLayer(hidden_activation, **act_kwargs))
         
-        self.layes.append(Linear(dims[-1], output_dim))
+        self.layers.append(Linear(dims[-1], output_dim))
         self.layers.append(ActivationLayer(output_activation))
 
         self.loss_layer = LossLayer(loss_name)
@@ -96,7 +105,7 @@ class FFNN:
         print(f"[FFNN] loss function: {loss_name}")
     
     # forward propagation
-    def forwrard(self, x: np.ndarray) -> np.ndarray:
+    def forward(self, x: np.ndarray) -> np.ndarray:
         out = x
         for layer in self.layers:
             out = layer.forward(out)
@@ -116,25 +125,26 @@ class FFNN:
         "update w and b to all linear layer with the gradient stored"
         for layer in self.layers:
             if isinstance(layer, Linear):
-                layer.w += lr * layer.dw
-                layer.b += lr * layer.db
+                layer.w -= lr * layer.dw
+                layer.b -= lr * layer.db
     
     def train_step(self, x_batch: np.ndarray, y_batch: np.ndarray, lr: float = 0.01) -> float:
+        y_batch = np.asarray(y_batch, dtype=np.float64).reshape(-1, 1)
         y_pred = self.forward(x_batch)
         loss = self.backward(y_pred, y_batch)
         self.update_params(lr)
         return loss
 
     # predictttttt
-    def predict(self, x: np.ndarray) -> np.ndarray:
+    def predict_proba(self, x: np.ndarray) -> np.ndarray:
         return self.forward(x)
     
     def predict(self, x: np.ndarray, threshold: float = 0.1) -> np.ndarray:
-        return (self.predict_proba(x) >= threshold).astype(int)
+        return (self.predict_proba(x) >= threshold).astype(int).ravel()
 
 def batch_generator(x: np.ndarray, y: np.ndarray, batch_size: int = 32, shuffle: bool = True):
     n = x.shape[0]
-    indices = np.arrange(n)
+    indices = np.arange(n)
     if shuffle:
         np.random.shuffle(indices)
     for start in range(0, n, batch_size):
@@ -143,11 +153,11 @@ def batch_generator(x: np.ndarray, y: np.ndarray, batch_size: int = 32, shuffle:
         yield x[batch_idx], y[batch_idx]
 
 if __name__ == "__main__":
-    from data_loader import DataLoader
+    from utils.data_loader import DataLoader
  
     # 1. Load & preprocess data
     loader = (
-        DataLoader("data/placement_dataset.csv")
+        DataLoader("data/datasetml_2026.csv")
         .load()
         .eda()
         .split(train_ratio=0.8, random_seed=42)
@@ -156,6 +166,11 @@ if __name__ == "__main__":
  
     X_train, y_train = loader.get_train()
     X_test,  y_test  = loader.get_test()
+
+    X_train = np.asarray(X_train, dtype=np.float64)
+    X_test = np.asarray(X_test, dtype=np.float64)
+    y_train = np.asarray(y_train, dtype=np.float64)
+    y_test = np.asarray(y_test, dtype=np.float64)
  
     print(f"X_train : {X_train.shape}  |  y_train : {y_train.shape}")
     print(f"X_test  : {X_test.shape}   |  y_test  : {y_test.shape}\n")
@@ -165,11 +180,11 @@ if __name__ == "__main__":
     #    Ganti loss_name: 'binary_cross_entropy', 'mse'
     model = FFNN(
         input_dim         = X_train.shape[1],
-        hidden_dims       = [128, 64],
+        hidden_dim        = [128, 64],
         output_dim        = 1,
         hidden_activation = 'relu',
         output_activation = 'sigmoid',
-        loss_name         = 'binary_cross_entropy',
+        loss_name         = 'bce',
         # act_kwargs      = {'alpha': 0.05}   # aktifkan jika pakai leaky_relu
     )
  
