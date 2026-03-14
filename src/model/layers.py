@@ -55,8 +55,9 @@ class LossLayer:
     loss_map = {
         'bce': 'binary_cross_entropy',
         'cce': 'categorical_cross_entropy',
-        'mse': 'mse'
+        'mse': 'mse',
     }
+
     def __init__(self, name: str):
         if name not in self.loss_map:
             raise ValueError(f"[LossLayer] loss '{name}' unrecognized"
@@ -95,15 +96,21 @@ class FFNN:
         
         self.layers.append(Linear(dims[-1], output_dim))
         self.layers.append(ActivationLayer(output_activation))
-
         self.loss_layer = LossLayer(loss_name)
+        self.history: dict = {
+            'train_loss' : [],
+            'val_loss'   : [],
+            'train_acc'  : [],
+            'val_acc'    : [],
+        }
+
         print(f"[FFNN] architecture initialized with: {input_dim} -> "
               + f" -> ".join(str(d) for d in hidden_dim)
               + f" -> {output_dim}")
-        print(f"[FFNN] hidden activation: {hidden_activation}")
-        print(f"[FFNN] output activation: {output_activation}")
-        print(f"[FFNN] loss function: {loss_name}")
-    
+        print(f"[FFNN] hidden activation : {hidden_activation}")
+        print(f"[FFNN] output activation : {output_activation}")
+        print(f"[FFNN] loss function     : {loss_name}\n")
+
     # forward propagation
     def forward(self, x: np.ndarray) -> np.ndarray:
         out = x
@@ -115,12 +122,10 @@ class FFNN:
     def backward(self, y_pred: np.ndarray, y_true: np.ndarray) -> float:
         loss = self.loss_layer.forward(y_pred, y_true)
         grad = self.loss_layer.backward(y_pred, y_true)
-
         for layer in reversed(self.layers):
             grad = layer.backward(grad)
-        
         return loss
-    
+
     def update_params(self, lr: float = 0.01):
         "update w and b to all linear layer with the gradient stored"
         for layer in self.layers:
@@ -138,9 +143,83 @@ class FFNN:
     # predictttttt
     def predict_proba(self, x: np.ndarray) -> np.ndarray:
         return self.forward(x)
-    
-    def predict(self, x: np.ndarray, threshold: float = 0.1) -> np.ndarray:
+
+    def predict(self, x: np.ndarray, threshold: float = 0.5) -> np.ndarray:
         return (self.predict_proba(x) >= threshold).astype(int).ravel()
+
+    # visualization helpers
+    def get_weight_distribution(self) -> dict:
+        result  = {}
+        lin_idx = 0
+        for layer in self.layers:
+            if isinstance(layer, Linear):
+                result[f'Linear_{lin_idx}'] = layer.w.ravel().copy()
+                lin_idx += 1
+        return result
+    
+    def get_gradient_distribution(self) -> dict:
+        result  = {}
+        lin_idx = 0
+        for layer in self.layers:
+            if isinstance(layer, Linear):
+                if layer.dw is not None:
+                    result[f'Linear_{lin_idx}'] = layer.dw.ravel().copy()
+                lin_idx += 1
+        return result
+
+    def get_training_history(self) -> dict:
+        return {k: list(v) for k, v in self.history.items()}
+
+    def get_validation_loss(self) -> list:
+        return list(self.history['val_loss'])
+
+    def _record_epoch(
+        self,
+        train_loss : float,
+        train_acc  : float,
+        val_loss   : float | None = None,
+        val_acc    : float | None = None,
+    ) -> None:
+        self.history['train_loss'].append(train_loss)
+        self.history['train_acc'].append(train_acc)
+        if val_loss is not None:
+            self.history['val_loss'].append(val_loss)
+        if val_acc is not None:
+            self.history['val_acc'].append(val_acc)
+
+    def train_epoch(
+        self,
+        x_train    : np.ndarray,
+        y_train    : np.ndarray,
+        lr         : float = 0.01,
+        batch_size : int   = 32,
+        x_val      : np.ndarray | None = None,
+        y_val      : np.ndarray | None = None,
+    ) -> dict:
+        batch_losses = []
+        for x_b, y_b in batch_generator(x_train, y_train, batch_size):
+            loss = self.train_step(x_b, y_b, lr)
+            batch_losses.append(loss)
+
+        train_loss = float(np.mean(batch_losses))
+        train_acc  = float(np.mean(self.predict(x_train) == y_train.ravel()))
+
+        val_loss = val_acc = None
+        if x_val is not None and y_val is not None:
+            y_val_pred = self.forward(np.asarray(x_val, dtype=np.float64))
+            val_loss   = self.loss_layer.forward(
+                y_val_pred,
+                np.asarray(y_val, dtype=np.float64).reshape(-1, 1)
+            )
+            val_acc = float(np.mean(self.predict(x_val) == np.asarray(y_val).ravel()))
+
+        self._record_epoch(train_loss, train_acc, val_loss, val_acc)
+
+        metrics = {'train_loss': train_loss, 'train_acc': train_acc}
+        if val_loss is not None:
+            metrics['val_loss'] = val_loss
+            metrics['val_acc']  = val_acc
+        return metrics
 
 def batch_generator(x: np.ndarray, y: np.ndarray, batch_size: int = 32, shuffle: bool = True):
     n = x.shape[0]
@@ -176,8 +255,6 @@ if __name__ == "__main__":
     print(f"X_test  : {X_test.shape}   |  y_test  : {y_test.shape}\n")
  
     # 2. Inisialisasi model
-    #    Ganti hidden_activation: 'relu', 'tanh', 'leaky_relu', 'softplus'
-    #    Ganti loss_name: 'binary_cross_entropy', 'mse'
     model = FFNN(
         input_dim         = X_train.shape[1],
         hidden_dim        = [128, 64],
@@ -185,26 +262,35 @@ if __name__ == "__main__":
         hidden_activation = 'relu',
         output_activation = 'sigmoid',
         loss_name         = 'bce',
-        # act_kwargs      = {'alpha': 0.05}   # aktifkan jika pakai leaky_relu
     )
- 
-    # 3. Training loop
+
+    # 3. Training loop — pakai train_epoch() agar history otomatis tercatat
     EPOCHS     = 30
     BATCH_SIZE = 32
     LR         = 0.01
  
     for epoch in range(1, EPOCHS + 1):
-        batch_losses = []
- 
-        for X_batch, y_batch in batch_generator(X_train, y_train, batch_size=BATCH_SIZE):
-            loss = model.train_step(X_batch, y_batch, lr=LR)
-            batch_losses.append(loss)
- 
+        metrics = model.train_epoch(
+            X_train, y_train,
+            lr         = LR,
+            batch_size = BATCH_SIZE,
+            x_val      = X_test,   # pakai test set sebagai val set
+            y_val      = y_test,
+        )
         if epoch % 5 == 0 or epoch == 1:
-            avg_loss = np.mean(batch_losses)
-            acc      = np.mean(model.predict(X_test) == y_test)
-            print(f"Epoch {epoch:3d}/{EPOCHS}  |  Loss: {avg_loss:.4f}  |  Test Acc: {acc:.4f}")
- 
-    # 4. Evaluasi akhir
-    final_acc = np.mean(model.predict(X_test) == y_test)
-    print(f"\n[FFNN] Final Test Accuracy: {final_acc:.4f}")
+            print(f"Epoch {epoch:3d}/{EPOCHS}"
+                  f"  |  Train Loss: {metrics['train_loss']:.4f}"
+                  f"  |  Val Loss: {metrics.get('val_loss', float('nan')):.4f}"
+                  f"  |  Val Acc: {metrics.get('val_acc', float('nan')):.4f}")
+
+    # 4. Ambil data untuk visualisasi
+    weights  = model.get_weight_distribution()      # -> plot histogram bobot
+    grads    = model.get_gradient_distribution()    # -> plot histogram gradien
+    history  = model.get_training_history()         # -> plot train/val loss & acc
+    val_loss = model.get_validation_loss()          # -> plot validation loss saja
+
+    print(f"\n[FFNN] Layer weights  : {list(weights.keys())}")
+    print(f"[FFNN] Layer grads    : {list(grads.keys())}")
+    print(f"[FFNN] History keys   : {list(history.keys())}")
+    print(f"[FFNN] Val loss len   : {len(val_loss)} epochs")
+    print(f"\n[FFNN] Final Test Accuracy: {history['val_acc'][-1]:.4f}")
