@@ -8,6 +8,7 @@ if str(SRC_ROOT) not in sys.path:
 import numpy as np
 from model.activations import Activation
 from model.loss import Loss
+from model.optimizer import GradientDescent
 
 class Linear:
     def __init__(self, in_features: int, out_features: int):
@@ -121,18 +122,18 @@ class FFNN:
         
         return loss
     
-    def update_params(self, lr: float = 0.01):
-        "update w and b to all linear layer with the gradient stored"
-        for layer in self.layers:
-            if isinstance(layer, Linear):
-                layer.w -= lr * layer.dw
-                layer.b -= lr * layer.db
+    # def update_params(self, lr: float = 0.01):
+    #     "update w and b to all linear layer with the gradient stored"
+    #     for layer in self.layers:
+    #         if isinstance(layer, Linear):
+    #             layer.w -= lr * layer.dw
+    #             layer.b -= lr * layer.db
     
-    def train_step(self, x_batch: np.ndarray, y_batch: np.ndarray, lr: float = 0.01) -> float:
+    def train_step(self, x_batch: np.ndarray, y_batch: np.ndarray, optimizer) -> float:
         y_batch = np.asarray(y_batch, dtype=np.float64).reshape(-1, 1)
         y_pred = self.forward(x_batch)
         loss = self.backward(y_pred, y_batch)
-        self.update_params(lr)
+        optimizer.step(self.layers)
         return loss
 
     # predictttttt
@@ -192,12 +193,14 @@ if __name__ == "__main__":
     EPOCHS     = 30
     BATCH_SIZE = 32
     LR         = 0.01
+
+    optimizer = GradientDescent(lr=LR)
  
     for epoch in range(1, EPOCHS + 1):
         batch_losses = []
  
         for X_batch, y_batch in batch_generator(X_train, y_train, batch_size=BATCH_SIZE):
-            loss = model.train_step(X_batch, y_batch, lr=LR)
+            loss = model.train_step(X_batch, y_batch, optimizer)
             batch_losses.append(loss)
  
         if epoch % 5 == 0 or epoch == 1:
