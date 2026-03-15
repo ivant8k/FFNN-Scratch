@@ -32,7 +32,7 @@ class Activation:
         return np.tanh(x)
 
     def tanh_derivative(self, x):
-        return (2 / np.exp(x) - np.exp(-x))**2
+        return (2 /(np.exp(x) + np.exp(-x)))**2
 
     # Softmax: For vector \overrightarrow(x) = (x_1, x_2, ..., x_n) \in \mathbb{R}^n
     # softmax(\overrightarrow(x))_i = (e^(x_i) / \sum_{j=1}{n} e^(x_j))
@@ -56,16 +56,16 @@ class Activation:
     def leaky_relu_derivative(self, x, alpha=0.01):
         return np.where(x>0, 1, alpha)
 
-    # (Bonus) SoftPlus: A(x) = log(1 + e^x)
+    # (Bonus) SoftPlus: A(x) = ln(1 + e^x)
     def softplus(self, x):
-        return np.log10(1 + np.exp(x))
+        return np.log(1 + np.exp(x))
 
     def softplus_derivative(self, x):
-        return np.exp(x)/(np.log(10) * (1 + np.exp(x)))
+        return self.sigmoid(x)
 
 
 
-# test_val = 0.5
+# test_val = 1
 # test_arr = np.array([-1.0, 0.0, 1.0, 2.0])
 # Activation = Activation()
 # print(">>>Testing Fungsi Aktivasi\n")

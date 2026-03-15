@@ -73,7 +73,10 @@ class ActivationLayer:
     
     def backward(self, dout: np.ndarray) -> np.ndarray:
         deriv_fn = getattr(self.act, f"{self.name}_derivative")
-        return dout * deriv_fn(self.cache, **self.kwargs)
+        deriv = deriv_fn(self.cache, **self.kwargs)
+        if self.name == 'softmax':
+            return dout @ deriv
+        return dout * deriv
     
 
 # loss wrapper

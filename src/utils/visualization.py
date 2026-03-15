@@ -231,8 +231,8 @@ class Visualizer:
                     ax.set_ylabel("Count", fontsize=8)
                     ax.grid(axis='y', alpha=0.3)
  
-                plt.tight_layout()
-                self._savefig(fig, f"{save_prefix}_weights.png")
+            plt.tight_layout()
+            self._savefig(fig, f"{save_prefix}_weights.png")
  
         #C: gradient distribution
         if mode in ('grads', 'all'):

@@ -19,7 +19,7 @@ class Loss:
 
     def binary_cross_entropy_derivative(self, y_a,y_p, epsilon=1e-15):
         y_p = np.clip(y_p, epsilon, 1-epsilon)
-        return -((y_p - y_a)/(y_p * (1-y_p))) / y_p.shape[0]
+        return (y_p - y_a) / (y_p * (1 - y_p) * y_p.shape[0])
 
     # Categorical Cross-Entropy: 
     # \mathcal{L}_{CCE} = -1/n * \sum_{i=1}^{n} \sum_{j=1}^{C} (y_{ij} log \hat{y}_{ij})
