@@ -3,6 +3,7 @@ import csv
 import pandas as pd
 import numpy as np
 from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import train_test_split
 
 class DataLoader:
     def __init__(self, file_path: str):
@@ -151,7 +152,26 @@ class DataLoader:
 
     # def visualisasi():
 
-### Getter
+    def split_val(self, val_size: float = 0.2, random_state: int = 42) -> "DataLoader":
+        if self.X_train is None:
+            raise ValueError("Jalankan split().preprocess() sebelum split_val().")
+
+        TARGET_COL = 'placement_status'
+
+        self.X_train, self.X_val, self.y_train, self.y_val = train_test_split(
+            self.X_train,
+            self.y_train,
+            test_size=val_size,
+            random_state=random_state,
+            stratify=self.y_train   # jaga proporsi Placed/Not Placed
+        )
+
+        print(f"[DataLoader] X_train : {self.X_train.shape} | y_train : {self.y_train.shape}")
+        print(f"[DataLoader] X_val   : {self.X_val.shape}   | y_val   : {self.y_val.shape}")
+
+        return self
+
+    ### Getter
     def get_train(self):
         return self.X_train, self.y_train
 
