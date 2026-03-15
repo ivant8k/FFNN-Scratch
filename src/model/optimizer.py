@@ -11,7 +11,7 @@ if str(SRC_ROOT) not in sys.path:
 import numpy as np
 
 class GradientDescent:
-    """
+    r"""
     Gradient Descent optimizer + Regularization
 
     Standard weight update rule:
