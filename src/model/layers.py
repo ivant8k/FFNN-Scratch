@@ -1,6 +1,7 @@
 from pathlib import Path
 import sys
 import os
+import pickle
 
 SRC_ROOT = Path(__file__).resolve().parents[1]
 if str(SRC_ROOT) not in sys.path:
@@ -9,13 +10,12 @@ if str(SRC_ROOT) not in sys.path:
 import numpy as np
 from model.activations import Activation
 from model.loss import Loss
-from model.optimizer import GradientDescent
 from model.initializer import Initializer
 
 class Linear:
     def __init__(self, in_features: int, 
                  out_features: int,
-                 init_method  : str  = 'normal',
+                 init_method  : str  = 'zero',
                  distribution : str  = None,
                  seed         : int  = None,
                  lower        : float = -0.5,
@@ -39,9 +39,8 @@ class Linear:
             dist   = distribution if distribution is not None else 'normal'
             self.w = init.he(shape, distribution=dist, seed=seed)
         else:
-            raise ValueError(
-                f"[Linear] init_method '{init_method}' tidak dikenal. "
-                f"Pilihan: 'zero', 'uniform', 'normal', 'xavier', 'he'"
+            raise ValueError(f"[Linear] init_method '{init_method}' unrecognized. "
+                f"Valid options: 'zero', 'uniform', 'normal', 'xavier', 'he'"
             )
         
         self.b = np.zeros(out_features)
@@ -117,7 +116,6 @@ class FFNN:
             output_activation: str = 'relu',
             loss_name: str = 'bce',
             act_kwargs: dict = None, # for leaky realu
-            # init
             init_method       : str  = 'normal',
             distribution      : str  = None,
             seed              : int  = None,
@@ -183,13 +181,6 @@ class FFNN:
         
         return loss
     
-    # def update_params(self, lr: float = 0.01):
-    #     "update w and b to all linear layer with the gradient stored"
-    #     for layer in self.layers:
-    #         if isinstance(layer, Linear):
-    #             layer.w -= lr * layer.dw
-    #             layer.b -= lr * layer.db
-    
     def train_step(self, x_batch: np.ndarray, y_batch: np.ndarray, optimizer) -> float:
         y_batch = np.asarray(y_batch, dtype=np.float64).reshape(-1, 1)
         y_pred = self.forward(x_batch)
@@ -203,56 +194,6 @@ class FFNN:
     
     def predict(self, x: np.ndarray, threshold: float = 0.1) -> np.ndarray:
         return (self.predict_proba(x) >= threshold).astype(int).ravel()
-    
-    # Save and Load def save(self, filepath: str) -> None:
-    def save(self, filepath: str) -> None:
-        # Buat folder jika belum ada
-        folder = os.path.dirname(filepath)
-        if folder:
-            os.makedirs(folder, exist_ok=True)
- 
-        # Kumpulkan semua W dan b dari tiap Linear layer
-        params = {}
-        lin_idx = 0
-        for layer in self.layers:
-            if isinstance(layer, Linear):
-                params[f'W_{lin_idx}'] = layer.w
-                params[f'b_{lin_idx}'] = layer.b
-                lin_idx += 1
- 
-        # Simpan ke .npz
-        np.savez(filepath, **params)
-        print(f"[FFNN] Model tersimpan di '{filepath}' "
-              f"({lin_idx} linear layer)")
- 
-    def load(self, filepath: str) -> "FFNN":
-        if not os.path.exists(filepath):
-            raise FileNotFoundError(
-                f"[FFNN] File tidak ditemukan: '{filepath}'"
-            )
- 
-        # Load file .npz
-        data = np.load(filepath)
- 
-        # Restore W dan b ke tiap Linear layer
-        lin_idx = 0
-        for layer in self.layers:
-            if isinstance(layer, Linear):
-                key_w = f'W_{lin_idx}'
-                key_b = f'b_{lin_idx}'
- 
-                if key_w not in data or key_b not in data:
-                    raise KeyError(
-                        f"[FFNN] Key '{key_w}' atau '{key_b}' tidak ditemukan di file. "
-                    )
- 
-                layer.w = data[key_w]
-                layer.b = data[key_b]
-                lin_idx += 1
- 
-        print(f"[FFNN] Model berhasil di-load dari '{filepath}' "
-              f"({lin_idx} linear layer)")
-        return self
 
     # visualization helpers
     def get_weight_distribution(self) -> dict:
@@ -327,6 +268,45 @@ class FFNN:
             metrics['val_loss'] = val_loss
             metrics['val_acc']  = val_acc
         return metrics
+    
+    def save(self, filepath: str) -> None:
+        folder = os.path.dirname(filepath)
+        if folder:
+            os.makedirs(folder, exist_ok=True)
+        params = {}
+        lin_idx = 0
+        for layer in self.layers:
+            if isinstance(layer, Linear):
+                params[f'W_{lin_idx}'] = layer.w
+                params[f'b_{lin_idx}'] = layer.b
+                lin_idx += 1
+ 
+        np.savez(filepath, **params)
+        print(f"[FFNN] Model tersimpan di '{filepath}' ")
+ 
+    def load(self, filepath: str) -> "FFNN":
+        if not os.path.exists(filepath):
+            raise FileNotFoundError(
+                f"[FFNN] File tidak ditemukan: '{filepath}'"
+            )
+
+        data = np.load(filepath)
+ 
+        lin_idx = 0
+        for layer in self.layers:
+            if isinstance(layer, Linear):
+                key_w = f'W_{lin_idx}'
+                key_b = f'b_{lin_idx}'
+ 
+                if key_w not in data or key_b not in data:
+                    raise KeyError(f"[FFNN] Key '{key_w}' atau '{key_b}' tidak ditemukan di file. ")
+ 
+                layer.w = data[key_w]
+                layer.b = data[key_b]
+                lin_idx += 1
+ 
+        print(f"[FFNN] Model berhasil di-load dari '{filepath}' ")
+        return self
 
 def batch_generator(x: np.ndarray, y: np.ndarray, batch_size: int = 32, shuffle: bool = True):
     n = x.shape[0]
@@ -337,72 +317,3 @@ def batch_generator(x: np.ndarray, y: np.ndarray, batch_size: int = 32, shuffle:
         end = min(start + batch_size, n)
         batch_idx = indices[start:end]
         yield x[batch_idx], y[batch_idx]
-
-if __name__ == "__main__":
-    from utils.data_loader import DataLoader
- 
-    # 1. Load & preprocess data
-    loader = (
-        DataLoader("data/datasetml_2026.csv")
-        .load()
-        .eda()
-        .split(train_ratio=0.8, random_seed=42)
-        .preprocess()
-    )
- 
-    X_train, y_train = loader.get_train()
-    X_test,  y_test  = loader.get_test()
-
-    X_train = np.asarray(X_train, dtype=np.float64)
-    X_test = np.asarray(X_test, dtype=np.float64)
-    y_train = np.asarray(y_train, dtype=np.float64)
-    y_test = np.asarray(y_test, dtype=np.float64)
- 
-    print(f"X_train : {X_train.shape}  |  y_train : {y_train.shape}")
-    print(f"X_test  : {X_test.shape}   |  y_test  : {y_test.shape}\n")
- 
-    # 2. Inisialisasi model
-    #    Ganti hidden_activation: 'relu', 'tanh', 'leaky_relu', 'softplus'
-    #    Ganti loss_name: 'binary_cross_entropy', 'mse'
-    model = FFNN(
-        input_dim         = X_train.shape[1],
-        hidden_dim        = [128, 64],
-        output_dim        = 1,
-        hidden_activation = 'relu',
-        output_activation = 'sigmoid',
-        loss_name         = 'bce',
-        # act_kwargs      = {'alpha': 0.05}   # aktifkan jika pakai leaky_relu
-    )
- 
-    # 3. Training loop
-    EPOCHS     = 30
-    BATCH_SIZE = 32
-    LR         = 0.01
-
-    optimizer = GradientDescent(lr=LR)
- 
-    for epoch in range(1, EPOCHS + 1):
-        metrics = model.train_epoch(
-            X_train, y_train,
-            optimizer  = optimizer,
-            batch_size = BATCH_SIZE,
-            x_val      = X_test,   # pakai test set sebagai val set
-            y_val      = y_test,
-        )
-        if epoch % 5 == 0 or epoch == 1:
-            print(f"Epoch {epoch:3d}/{EPOCHS}"
-                  f"  |  Train Loss: {metrics['train_loss']:.4f}"
-                  f"  |  Val Loss: {metrics.get('val_loss', float('nan')):.4f}"
-                  f"  |  Val Acc: {metrics.get('val_acc', float('nan')):.4f}")
- 
-    # 4. Ambil data untuk visualisasi
-    weights  = model.get_weight_distribution()      # -> plot histogram bobot
-    grads    = model.get_gradient_distribution()    # -> plot histogram gradien
-    history  = model.get_training_history()         # -> plot train/val loss & acc
-    val_loss = model.get_validation_loss()          # -> plot validation loss saja
-
-    print(f"\n[FFNN] Layer weights  : {list(weights.keys())}")
-    print(f"[FFNN] Layer grads    : {list(grads.keys())}")
-    print(f"[FFNN] History keys   : {list(history.keys())}")
-    print(f"[FFNN] Val loss len   : {len(val_loss)} epochs")
-    print(f"\n[FFNN] Final Test Accuracy: {history['val_acc'][-1]:.4f}")

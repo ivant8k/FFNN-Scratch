@@ -1,6 +1,3 @@
-# --------------------------------------------------------------
-# GD & Regularization
-# --------------------------------------------------------------
 from pathlib import Path
 import sys
 
@@ -52,10 +49,10 @@ class GradientDescent:
                 layer.w -= self.lr * dw
                 layer.b -= self.lr * layer.db
 
-# (Bonus) Adaptive Moment Estimation (Adam) Optimizer
-class AdaptiveMomentEstimation:
-    def __init__ (self):
-        pass
+# # adam
+# class AdaptiveMomentEstimation:
+#     def __init__ (self):
+#         pass
 
-    def step (self):
-        pass
+#     def step (self):
+#         pass

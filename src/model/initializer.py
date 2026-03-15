@@ -12,6 +12,7 @@ class Initializer:
         rng = np.random.default_rng(seed)
         return rng.normal(mean, np.sqrt(variance), shape)
     
+    # bonuses
     def xavier(self, shape, distribution='uniform', seed=None) -> np.ndarray:
         fan_in, fan_out = shape
         rng = np.random.default_rng(seed)

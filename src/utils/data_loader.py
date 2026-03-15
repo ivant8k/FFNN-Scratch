@@ -7,9 +7,8 @@ from sklearn.model_selection import train_test_split
 
 class DataLoader:
     def __init__(self, file_path: str):
-        # Inisialisasi DataLoader.
         self.file_path = file_path
-        self.raw_data  = None   # Data mentah, diisi setelah load()
+        self.raw_data  = None 
         self.train_df  = None
         self.test_df   = None
         self.X_train   = None
@@ -186,9 +185,3 @@ class DataLoader:
         Q1, Q3 = series.quantile(0.25), series.quantile(0.75)
         IQR = Q3 - Q1
         return Q1 - 1.5 * IQR, Q3 + 1.5 * IQR
-
-
-
-
-
-

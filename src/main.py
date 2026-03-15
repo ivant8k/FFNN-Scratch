@@ -13,10 +13,6 @@ from model.optimizer import GradientDescent
 from utils.visualization import Visualizer
 
 
-# =============================================================================
-# KONFIGURASI — untuk eksperimen
-# =============================================================================
-
 # Data
 DATA_PATH   = '../data/datasetml_2026.csv'
 TRAIN_RATIO = 0.8
@@ -56,12 +52,8 @@ def run():
     save_path = os.path.join(OUTPUT_DIR, f'{MODEL_NAME}.npz')
 
     print("=" * 65)
-    print("   FEEDFORWARD NEURAL NETWORK — IF3270 Pembelajaran Mesin")
+    print("FEEDFORWARD NEURAL NETWORK — IF3270 Pembelajaran Mesin")
     print("=" * 65)
-
-    # ------------------------------------------------------------------
-    # 1. Load & Preprocess Data
-    # ------------------------------------------------------------------
     print("\n[1] PREPROCESSING DATA")
     print("-" * 65)
 
@@ -90,10 +82,6 @@ def run():
     print(f"  Train  : {X_train.shape[0]} sampel")
     print(f"  Val    : {X_val.shape[0]} sampel")
     print(f"  Test   : {X_test.shape[0]} sampel")
-
-    # ------------------------------------------------------------------
-    # 2. Setup Model
-    # ------------------------------------------------------------------
     print("\n[2] SETUP MODEL")
     print("-" * 65)
 
@@ -119,9 +107,6 @@ def run():
         lam      = REG_LAMBDA,
     )
 
-    # ------------------------------------------------------------------
-    # 3. Training
-    # ------------------------------------------------------------------
     print(f"\n[3] TRAINING ({EPOCHS} epochs)")
     print("-" * 65)
 
@@ -143,9 +128,6 @@ def run():
                 f"  |  val_acc   : {metrics.get('val_acc',  float('nan')):.4f}"
             )
 
-    # ------------------------------------------------------------------
-    # 4. Evaluasi
-    # ------------------------------------------------------------------
     print("\n[4] EVALUASI TEST SET")
     print("-" * 65)
 
@@ -165,16 +147,12 @@ def run():
     print(f"  Recall    : {recall:.4f}")
     print(f"  F1 Score  : {f1:.4f}")
 
-    # ------------------------------------------------------------------
-    # 5. Save Model
-    # ------------------------------------------------------------------
+
     print("\n[5] SAVE MODEL")
     print("-" * 65)
     model.save(save_path)
 
-    # ------------------------------------------------------------------
-    # 6. Visualisasi
-    # ------------------------------------------------------------------
+
     print("\n[6] VISUALISASI")
     print("-" * 65)
 
@@ -192,7 +170,6 @@ def run():
     except Exception as e:
         print(f"  [WARNING] Tidak bisa plot weight: {e}")
 
-    # Gradient distribution
     try:
         y_pred_viz = model.forward(X_test)
         model.backward(y_pred_viz, y_test.reshape(-1, 1))
@@ -206,17 +183,15 @@ def run():
     except Exception as e:
         print(f"  [WARNING] Tidak bisa plot gradient: {e}")
 
-    # ------------------------------------------------------------------
-    # Ringkasan
-    # ------------------------------------------------------------------
+
     print("\n" + "=" * 65)
     print("RINGKASAN")
     print("=" * 65)
     print(f"  Test Accuracy : {test_acc:.4f} ({test_acc*100:.2f}%)")
     print(f"  Model         : {save_path}")
     print(f"  Output        : {OUTPUT_DIR}/")
-    print(f"    - weight_distribution.png")
-    print(f"    - gradient_distribution.png")
+    print(f" - weight_distribution.png")
+    print(f" - gradient_distribution.png")
     print("=" * 65)
 
     return model, loader
