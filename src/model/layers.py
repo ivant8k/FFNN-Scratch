@@ -1,5 +1,6 @@
 from pathlib import Path
 import sys
+import os
 
 SRC_ROOT = Path(__file__).resolve().parents[1]
 if str(SRC_ROOT) not in sys.path:
@@ -9,11 +10,40 @@ import numpy as np
 from model.activations import Activation
 from model.loss import Loss
 from model.optimizer import GradientDescent
+from model.initializer import Initializer
 
 class Linear:
-    def __init__(self, in_features: int, out_features: int):
+    def __init__(self, in_features: int, 
+                 out_features: int,
+                 init_method  : str  = 'normal',
+                 distribution : str  = None,
+                 seed         : int  = None,
+                 lower        : float = -0.5,
+                 upper        : float =  0.5,
+                 mean         : float =  0.0,
+                 variance     : float =  1.0,):
         # w - weight matrix, b - bias vector
-        self.w = np.random.randn(in_features, out_features) * np.sqrt(2.0 / in_features)
+        init  = Initializer()
+        shape = (in_features, out_features)
+
+        if init_method == 'zero':
+            self.w = init.zero(shape)
+        elif init_method == 'uniform':
+            self.w = init.uniform(shape, lower=lower, upper=upper, seed=seed)
+        elif init_method == 'normal':
+            self.w = init.normal(shape, mean=mean, variance=variance, seed=seed)
+        elif init_method == 'xavier':
+            dist   = distribution if distribution is not None else 'uniform'
+            self.w = init.xavier(shape, distribution=dist, seed=seed)
+        elif init_method == 'he':
+            dist   = distribution if distribution is not None else 'normal'
+            self.w = init.he(shape, distribution=dist, seed=seed)
+        else:
+            raise ValueError(
+                f"[Linear] init_method '{init_method}' tidak dikenal. "
+                f"Pilihan: 'zero', 'uniform', 'normal', 'xavier', 'he'"
+            )
+        
         self.b = np.zeros(out_features)
         self.dw = None
         self.db = None
@@ -84,17 +114,36 @@ class FFNN:
             output_activation: str = 'relu',
             loss_name: str = 'bce',
             act_kwargs: dict = None, # for leaky realu
+            # init
+            init_method       : str  = 'normal',
+            distribution      : str  = None,
+            seed              : int  = None,
+            lower             : float = -0.5,
+            upper             : float =  0.5,
+            mean              : float =  0.0,
+            variance          : float =  1.0,
     ):
         self.layers = []
         act_kwargs = act_kwargs or {}
 
+        # param untuk diteruskan ke linear
+        init_kwargs = dict(
+            init_method  = init_method,
+            distribution = distribution,
+            seed         = seed,
+            lower        = lower,
+            upper        = upper,
+            mean         = mean,
+            variance     = variance,
+        )
+
         dims = [input_dim] + hidden_dim
 
         for i in range(len(dims) - 1):
-            self.layers.append(Linear(dims[i], dims[i + 1]))
+            self.layers.append(Linear(dims[i], dims[i + 1], **init_kwargs))
             self.layers.append(ActivationLayer(hidden_activation, **act_kwargs))
         
-        self.layers.append(Linear(dims[-1], output_dim))
+        self.layers.append(Linear(dims[-1], output_dim, **init_kwargs))
         self.layers.append(ActivationLayer(output_activation))
 
         self.loss_layer = LossLayer(loss_name)
@@ -111,6 +160,8 @@ class FFNN:
         print(f"[FFNN] hidden activation: {hidden_activation}")
         print(f"[FFNN] output activation: {output_activation}")
         print(f"[FFNN] loss function: {loss_name}")
+        print(f"[FFNN] weight init  : {init_method}"
+              + (f", seed={seed}" if seed is not None else ""))
     
     # forward propagation
     def forward(self, x: np.ndarray) -> np.ndarray:
@@ -150,6 +201,56 @@ class FFNN:
     def predict(self, x: np.ndarray, threshold: float = 0.1) -> np.ndarray:
         return (self.predict_proba(x) >= threshold).astype(int).ravel()
     
+    # Save and Load def save(self, filepath: str) -> None:
+    def save(self, filepath: str) -> None:
+        # Buat folder jika belum ada
+        folder = os.path.dirname(filepath)
+        if folder:
+            os.makedirs(folder, exist_ok=True)
+ 
+        # Kumpulkan semua W dan b dari tiap Linear layer
+        params = {}
+        lin_idx = 0
+        for layer in self.layers:
+            if isinstance(layer, Linear):
+                params[f'W_{lin_idx}'] = layer.w
+                params[f'b_{lin_idx}'] = layer.b
+                lin_idx += 1
+ 
+        # Simpan ke .npz
+        np.savez(filepath, **params)
+        print(f"[FFNN] Model tersimpan di '{filepath}' "
+              f"({lin_idx} linear layer)")
+ 
+    def load(self, filepath: str) -> "FFNN":
+        if not os.path.exists(filepath):
+            raise FileNotFoundError(
+                f"[FFNN] File tidak ditemukan: '{filepath}'"
+            )
+ 
+        # Load file .npz
+        data = np.load(filepath)
+ 
+        # Restore W dan b ke tiap Linear layer
+        lin_idx = 0
+        for layer in self.layers:
+            if isinstance(layer, Linear):
+                key_w = f'W_{lin_idx}'
+                key_b = f'b_{lin_idx}'
+ 
+                if key_w not in data or key_b not in data:
+                    raise KeyError(
+                        f"[FFNN] Key '{key_w}' atau '{key_b}' tidak ditemukan di file. "
+                    )
+ 
+                layer.w = data[key_w]
+                layer.b = data[key_b]
+                lin_idx += 1
+ 
+        print(f"[FFNN] Model berhasil di-load dari '{filepath}' "
+              f"({lin_idx} linear layer)")
+        return self
+
     # visualization helpers
     def get_weight_distribution(self) -> dict:
         result  = {}
