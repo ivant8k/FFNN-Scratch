@@ -35,10 +35,11 @@ class GradientDescent:
         """
         Update weights and biases for all Linear layers in 'layers'
         """
-        from model.layers import Linear
-
         for layer in layers:
-            if isinstance(layer, Linear):
+            if all(hasattr(layer, attr) for attr in ("w", "b", "dw", "db")):
+                if layer.dw is None or layer.db is None:
+                    continue
+
                 dw = layer.dw
 
                 if self.reg_type == 'l1':
