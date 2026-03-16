@@ -364,7 +364,7 @@ class Visualizer:
             disp.plot(ax=ax, colorbar=False, cmap=clr)
             ax.set_title(lbl, fontsize=10)
             ax.set_xlabel("Predicted")
-            ax.set_ylabel("True")
+            ax.set_ylabel("Actual")
  
         self._savefig(fig, save_path)
         

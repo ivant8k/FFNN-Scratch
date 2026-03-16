@@ -192,7 +192,7 @@ class FFNN:
     def predict_proba(self, x: np.ndarray) -> np.ndarray:
         return self.forward(x)
     
-    def predict(self, x: np.ndarray, threshold: float = 0.1) -> np.ndarray:
+    def predict(self, x: np.ndarray, threshold: float = 0.5) -> np.ndarray:
         return (self.predict_proba(x) >= threshold).astype(int).ravel()
 
     # visualization helpers
