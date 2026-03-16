@@ -161,7 +161,7 @@ class FFNN:
         print(f"[FFNN] hidden activation: {hidden_activation}")
         print(f"[FFNN] output activation: {output_activation}")
         print(f"[FFNN] loss function: {loss_name}")
-        print(f"[FFNN] weight init  : {init_method}"
+        print(f"[FFNN] weight init: {init_method}"
               + (f", seed={seed}" if seed is not None else ""))
     
     # forward propagation

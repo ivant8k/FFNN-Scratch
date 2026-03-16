@@ -367,3 +367,9 @@ class Visualizer:
             ax.set_ylabel("True")
  
         self._savefig(fig, save_path)
+        
+    @staticmethod
+    def print_section_term(title: str, width: int = 65, char: str = "="):
+        print("\n" + char * width)
+        print(f"{title:^{width}}")
+        print(char * width)

@@ -2,8 +2,10 @@ import os
 import csv
 import pandas as pd
 import numpy as np
+from IPython.display import display
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
+from src.utils.visualization import Visualizer
 
 class DataLoader:
     def __init__(self, file_path: str):
@@ -17,6 +19,7 @@ class DataLoader:
         self.y_test    = None
         self.X_val     = None
         self.y_val     = None
+        self.viz = Visualizer()
 
     def load(self) -> "DataLoader":
 
@@ -36,24 +39,23 @@ class DataLoader:
 
     def eda(self):
         
-        # Gambaran Umum Dataset
-        print("\n===Head Dataset===")
-        print(self.raw_data.head(5))
+        self.viz.print_section_term("Head Dataset")
+        display(self.raw_data.head(5))
 
         # Informasi Dataset
-        print("\n===Datatypes Dataset===")
-        print(self.raw_data.info())
+        self.viz.print_section_term("Datatypes Dataset===")
+        display(self.raw_data.info())
 
         # Check missing data
-        print("\nInformasi Missing Data")
-        print(self.raw_data.isna().sum())
+        self.viz.print_section_term("Informasi Missing Data")
+        display(self.raw_data.isna().sum())
 
         # Check duplikasi data
-        print("\nInformasi Duplikasi Data")
-        print(self.raw_data.duplicated().sum())
+        self.viz.print_section_term("Informasi Duplikasi Data")
+        display(self.raw_data.duplicated().sum())
 
         # Check Outlier
-        print("\n===Informasi Outlier (Metode IQR)===")
+        self.viz.print_section_term("Informasi Outlier (Metode IQR")
         # Ambil semua kolom dengan tipe data numerik
         num_cols = self.raw_data.select_dtypes(include=[np.number]).columns
         
@@ -64,9 +66,9 @@ class DataLoader:
             print(f"{col}: {n} outliers")
 
         # Informasi Distribusi Kelas Target :placement_status
-        print("\n Informasi Distribusi Target")
-        print(self.raw_data['placement_status'].value_counts())
-        print(self.raw_data['placement_status'].value_counts(normalize=True).round(3))
+        self.viz.print_section_term("Informasi Distribusi Target")
+        display(self.raw_data['placement_status'].value_counts())
+        display(self.raw_data['placement_status'].value_counts(normalize=True).round(3))
 
         return self
 
@@ -85,7 +87,7 @@ class DataLoader:
             self.test_df[col] = self.test_df[col].clip(lower, upper)
 
         print("\n")
-        print("====Check outlier after clipping====")
+        self.viz.print_section_term("Informasi Outlier Setelah Clipping")
         for col in NUM_COLS:
             lower, upper = self.get_iqr_bounds(self.train_df[col])
             n = ((self.train_df[col] < lower) | (self.train_df[col] > upper)).sum()
