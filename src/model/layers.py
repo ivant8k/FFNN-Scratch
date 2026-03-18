@@ -2,6 +2,7 @@ from pathlib import Path
 import sys
 import os
 import pickle
+import json
 
 SRC_ROOT = Path(__file__).resolve().parents[1]
 if str(SRC_ROOT) not in sys.path:
@@ -127,6 +128,14 @@ class FFNN:
         self.layers = []
         act_kwargs = act_kwargs or {}
 
+        self._input_dim         = input_dim
+        self._hidden_dim        = list(hidden_dim)
+        self._output_dim        = output_dim
+        self._hidden_activation = hidden_activation
+        self._output_activation = output_activation
+        self._loss_name         = loss_name
+        self._init_method       = init_method
+
         # param untuk diteruskan ke linear
         init_kwargs = dict(
             init_method  = init_method,
@@ -193,7 +202,10 @@ class FFNN:
         return self.forward(x)
     
     def predict(self, x: np.ndarray, threshold: float = 0.5) -> np.ndarray:
-        return (self.predict_proba(x) >= threshold).astype(int).ravel()
+        proba = self.predict_proba(x)
+        if proba.shape[1] > 1: 
+            return np.argmax(proba, axis=1)
+        return (proba >= threshold).astype(int).ravel()
 
     # visualization helpers
     def get_weight_distribution(self) -> dict:
@@ -270,43 +282,79 @@ class FFNN:
         return metrics
     
     def save(self, filepath: str) -> None:
+        """
+        Simpan model ke 2 file:
+          - {filepath}.npz  → bobot semua Linear layer
+          - {filepath}.json → konfigurasi arsitektur model
+        """
         folder = os.path.dirname(filepath)
         if folder:
             os.makedirs(folder, exist_ok=True)
-        params = {}
+ 
+        # 1. Simpan bobot ke .npz
+        params  = {}
         lin_idx = 0
         for layer in self.layers:
             if isinstance(layer, Linear):
                 params[f'W_{lin_idx}'] = layer.w
                 params[f'b_{lin_idx}'] = layer.b
                 lin_idx += 1
- 
         np.savez(filepath, **params)
-        print(f"[FFNN] Model tersimpan di '{filepath}' ")
  
-    def load(self, filepath: str) -> "FFNN":
-        if not os.path.exists(filepath):
-            raise FileNotFoundError(
-                f"[FFNN] File tidak ditemukan: '{filepath}'"
-            )
-
-        data = np.load(filepath)
+        # 2. Simpan konfigurasi ke .json
+        config = {
+            'input_dim'         : self._input_dim,
+            'hidden_dim'        : self._hidden_dim,
+            'output_dim'        : self._output_dim,
+            'hidden_activation' : self._hidden_activation,
+            'output_activation' : self._output_activation,
+            'loss_name'         : self._loss_name,
+            'init_method'       : self._init_method,
+        }
+        with open(filepath + '.json', 'w', encoding='utf-8') as f:
+            json.dump(config, f, indent=4, ensure_ascii=False)
  
+        print(f"[FFNN] Model tersimpan di '{filepath}.npz' dan '{filepath}.json'")
+ 
+    @classmethod
+    def load(cls, filepath: str) -> "FFNN":
+        json_path = filepath + '.json'
+        npz_path  = filepath + '.npz'
+ 
+        if not os.path.exists(json_path):
+            raise FileNotFoundError(f"[FFNN] Config tidak ditemukan: '{json_path}'")
+        if not os.path.exists(npz_path):
+            raise FileNotFoundError(f"[FFNN] Bobot tidak ditemukan: '{npz_path}'")
+ 
+        # 1. Load config dan rekonstruksi model
+        with open(json_path, 'r', encoding='utf-8') as f:
+            config = json.load(f)
+ 
+        model = cls(
+            input_dim         = config['input_dim'],
+            hidden_dim        = config['hidden_dim'],
+            output_dim        = config['output_dim'],
+            hidden_activation = config['hidden_activation'],
+            output_activation = config['output_activation'],
+            loss_name         = config['loss_name'],
+            init_method       = config['init_method'],
+        )
+ 
+        # 2. Load bobot dari .npz
+        data    = np.load(npz_path)
         lin_idx = 0
-        for layer in self.layers:
+        for layer in model.layers:
             if isinstance(layer, Linear):
                 key_w = f'W_{lin_idx}'
                 key_b = f'b_{lin_idx}'
- 
                 if key_w not in data or key_b not in data:
-                    raise KeyError(f"[FFNN] Key '{key_w}' atau '{key_b}' tidak ditemukan di file. ")
- 
+                    raise KeyError(f"[FFNN] Key '{key_w}' atau '{key_b}' tidak ditemukan.")
                 layer.w = data[key_w]
                 layer.b = data[key_b]
                 lin_idx += 1
  
-        print(f"[FFNN] Model berhasil di-load dari '{filepath}' ")
-        return self
+        print(f"[FFNN] Model berhasil di-load dari '{filepath}'")
+        return model
 
 def batch_generator(x: np.ndarray, y: np.ndarray, batch_size: int = 32, shuffle: bool = True):
     n = x.shape[0]
