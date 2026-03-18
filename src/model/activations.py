@@ -32,15 +32,27 @@ class Activation:
 
     # softmax
     def softmax(self, x):
-        exp_x = np.exp(x - np.max(x))
-        return exp_x / np.sum(exp_x)
+        x = np.asarray(x, dtype=np.float64)
+        if x.ndim == 1:
+            z = x - np.max(x)
+            exp_x = np.exp(z)
+            return exp_x / np.sum(exp_x)
+
+        z = x - np.max(x, axis=1, keepdims=True)
+        exp_x = np.exp(z)
+        return exp_x / np.sum(exp_x, axis=1, keepdims=True)
 
     def softmax_derivative(self, x):
         S = self.softmax(x)
-        S_vector = S.reshape(-1,1)
-        diag = np.diagflat(S)
-        jacobian = diag - np.dot(S_vector, S_vector.T)
+        if S.ndim == 1:
+            S_vector = S.reshape(-1, 1)
+            diag = np.diagflat(S)
+            return diag - np.dot(S_vector, S_vector.T)
 
+        # Batch Jacobian: shape (batch, n_class, n_class)
+        jacobian = -np.einsum('bi,bj->bij', S, S)
+        idx = np.arange(S.shape[1])
+        jacobian[:, idx, idx] += S
         return jacobian
 
     # leaky relu (bonus)

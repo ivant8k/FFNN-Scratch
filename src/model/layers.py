@@ -75,7 +75,9 @@ class ActivationLayer:
         deriv_fn = getattr(self.act, f"{self.name}_derivative")
         deriv = deriv_fn(self.cache, **self.kwargs)
         if self.name == 'softmax':
-            return dout @ deriv
+            if np.asarray(deriv).ndim == 2:
+                return dout @ deriv
+            return np.einsum('bi,bij->bj', dout, deriv)
         return dout * deriv
     
 
@@ -189,10 +191,46 @@ class FFNN:
             grad = layer.backward(grad)
         
         return loss
+
+    def _prepare_targets_for_output(self, y: np.ndarray, y_pred: np.ndarray) -> np.ndarray:
+        y = np.asarray(y, dtype=np.float64)
+        y_pred = np.asarray(y_pred, dtype=np.float64)
+
+        if y_pred.ndim == 1 or (y_pred.ndim == 2 and y_pred.shape[1] == 1):
+            return y.reshape(-1, 1)
+
+        n_classes = y_pred.shape[1]
+
+        # If labels are class indices, convert to one-hot.
+        if y.ndim == 1 or (y.ndim == 2 and y.shape[1] == 1):
+            labels = y.reshape(-1).astype(int)
+            if np.any(labels < 0) or np.any(labels >= n_classes):
+                raise ValueError(
+                    f"[FFNN] multiclass target index out of range [0, {n_classes - 1}]"
+                )
+            return np.eye(n_classes, dtype=np.float64)[labels]
+
+        if y.ndim == 2 and y.shape[1] == n_classes:
+            return y
+
+        raise ValueError(
+            f"[FFNN] target shape {y.shape} incompatible with model output shape {y_pred.shape}"
+        )
+
+    def _targets_to_labels(self, y: np.ndarray) -> np.ndarray:
+        y = np.asarray(y)
+        if y.ndim == 2 and y.shape[1] > 1:
+            return np.argmax(y, axis=1)
+        return y.ravel().astype(int)
+
+    def _accuracy(self, x: np.ndarray, y: np.ndarray) -> float:
+        y_pred_label = self.predict(x)
+        y_true_label = self._targets_to_labels(y)
+        return float(np.mean(y_pred_label == y_true_label))
     
     def train_step(self, x_batch: np.ndarray, y_batch: np.ndarray, optimizer) -> float:
-        y_batch = np.asarray(y_batch, dtype=np.float64).reshape(-1, 1)
         y_pred = self.forward(x_batch)
+        y_batch = self._prepare_targets_for_output(y_batch, y_pred)
         loss = self.backward(y_pred, y_batch)
         optimizer.step(self.layers)
         return loss
@@ -202,10 +240,12 @@ class FFNN:
         return self.forward(x)
     
     def predict(self, x: np.ndarray, threshold: float = 0.5) -> np.ndarray:
-        proba = self.predict_proba(x)
-        if proba.shape[1] > 1: 
-            return np.argmax(proba, axis=1)
-        return (proba >= threshold).astype(int).ravel()
+        y_proba = np.asarray(self.predict_proba(x), dtype=np.float64)
+
+        if y_proba.ndim == 2 and y_proba.shape[1] > 1:
+            return np.argmax(y_proba, axis=1)
+
+        return (y_proba >= threshold).astype(int).ravel()
 
     # visualization helpers
     def get_weight_distribution(self) -> dict:
@@ -262,16 +302,17 @@ class FFNN:
             batch_losses.append(loss)
 
         train_loss = float(np.mean(batch_losses))
-        train_acc  = float(np.mean(self.predict(x_train) == y_train.ravel()))
+        train_acc  = self._accuracy(x_train, y_train)
 
         val_loss = val_acc = None
         if x_val is not None and y_val is not None:
             y_val_pred = self.forward(np.asarray(x_val, dtype=np.float64))
+            y_val_true = self._prepare_targets_for_output(y_val, y_val_pred)
             val_loss   = self.loss_layer.forward(
                 y_val_pred,
-                np.asarray(y_val, dtype=np.float64).reshape(-1, 1)
+                y_val_true,
             )
-            val_acc = float(np.mean(self.predict(x_val) == np.asarray(y_val).ravel()))
+            val_acc = self._accuracy(x_val, y_val)
 
         self._record_epoch(train_loss, train_acc, val_loss, val_acc)
 
@@ -353,8 +394,57 @@ class FFNN:
                 layer.b = data[key_b]
                 lin_idx += 1
  
-        print(f"[FFNN] Model berhasil di-load dari '{filepath}'")
+        print(f"[FFNN] Model berhasil di-load dari '{filepath}' ")
         return model
+    
+    def fit(
+            self,
+            X_train: np.ndarray,
+            y_train: np.ndarray,
+            optimizer,
+            epochs: int = 50,
+            batch_size: int = 32,
+            verbose: int = 1,
+            X_val: np.ndarray | None = None,
+            y_val: np.ndarray | None = None,
+    ) -> dict:
+        X_train = np.asarray(X_train, dtype=np.float64)
+        y_train = np.asarray(y_train, dtype=np.float64)
+
+        for epoch in range(1, epochs + 1):
+            metrics = self.train_epoch(
+                X_train,
+                y_train,
+                optimizer,
+                batch_size=batch_size,
+                x_val=X_val,
+                y_val=y_val,
+            )
+
+            if verbose == 1:
+                bar_len = 30
+                filled = int(bar_len * epoch / epochs)
+                bar = '=' * filled + '-' * (bar_len - filled)
+                t_loss = metrics['train_loss']
+                t_acc = metrics['train_acc']
+                val_part = ''
+                if 'val_loss' in metrics:
+                    val_part = f"val loss: {metrics['val_loss']:4f} - val_acc: {metrics['val_acc']:4f}"
+                
+                print(
+                    f"\rEpoch {epoch:>{len(str(epochs))}}/{epochs} "
+                    f"[{bar}]"
+                    f" - loss: {t_loss:.4f} - acc: {t_acc:.4f}"
+                    f"{val_part}",
+                    end='\n' if epoch == epochs else '',
+                    flush=True,
+                )
+        
+        if verbose == 1:
+            print() # newline
+
+        return self.get_training_history()
+
 
 def batch_generator(x: np.ndarray, y: np.ndarray, batch_size: int = 32, shuffle: bool = True):
     n = x.shape[0]
